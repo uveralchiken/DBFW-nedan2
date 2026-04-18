@@ -32,7 +32,7 @@ def extract_yen_prices(text: str) -> list[int]:
 
 
 def has_soldout_text(text: str) -> bool:
-    ng_words = ["在庫なし", "売り切れ", "SOLD OUT", "品切れ", "×"]
+    ng_words = ["在庫なし", "売り切れ", "SOLD OUT", "品切れ", "×", "残り在庫無し"]
     return any(word in text for word in ng_words)
 
 
@@ -88,11 +88,20 @@ def get_cardrush(card_code: str, card_type: str) -> int | None:
 
 def get_mercard(card_code: str, card_type: str) -> int | None:
     url = f"https://www.mercarddb.jp/product-list?keyword={quote(card_code)}"
-    html = fetch_html(url)
-    soup = BeautifulSoup(html, "html.parser")
+
+    try:
+        html = fetch_html(url)
+        soup = BeautifulSoup(html, "html.parser")
+    except Exception:
+        return None
+
+    results = []
 
     for a in soup.find_all("a", href=True):
         text = a.get_text(" ", strip=True)
+
+        if not text:
+            continue
 
         if card_code not in text:
             continue
@@ -101,19 +110,52 @@ def get_mercard(card_code: str, card_type: str) -> int | None:
         if card_type == "normal" and "パラレル" in text:
             continue
 
+        if any(x in text for x in ["SEC", "SCR", "シークレット", "サイン", "PSA", "鑑定"]):
+            continue
+
+        if has_soldout_text(text):
+            continue
+
+        stock_match = re.search(r'残り\s*(\d+)\s*点', text)
+        if not stock_match:
+            continue
+
+        try:
+            stock = int(stock_match.group(1))
+        except Exception:
+            continue
+
+        if stock <= 0:
+            continue
+
         href = a["href"]
         full_url = urljoin("https://www.mercarddb.jp", href)
 
         try:
             detail_html = fetch_html(full_url)
             soup2 = BeautifulSoup(detail_html, "html.parser")
+            detail_text = soup2.get_text(" ", strip=True)
+
+            if has_soldout_text(detail_text):
+                continue
+
             tag = soup2.find("meta", {"property": "product:price:amount"})
             if tag and tag.get("content"):
-                return int(tag["content"])
+                price = int(tag["content"])
+                if 300 <= price <= 300000:
+                    results.append(price)
+                    continue
+
+            prices = extract_yen_prices(detail_text)
+            if prices:
+                price = min(prices)
+                if 300 <= price <= 300000:
+                    results.append(price)
+
         except Exception:
             continue
 
-    return None
+    return min(results) if results else None
 
 
 def get_fullahead(card_code: str, card_type: str) -> int | None:
