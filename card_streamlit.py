@@ -6,6 +6,7 @@ from urllib.parse import quote, urljoin
 
 HEADERS = {"User-Agent": "Mozilla/5.0"}
 
+
 # =========================
 # 共通
 # =========================
@@ -179,7 +180,6 @@ def get_fullahead(card_code: str, card_type: str) -> int | None:
         if has_soldout_text(item_text):
             continue
 
-        # 詳細ページも確認できる場合は売り切れ除外を強化
         if link and link.get("href"):
             detail_url = urljoin("https://www.fullahead-dbs.com", link["href"])
             try:
