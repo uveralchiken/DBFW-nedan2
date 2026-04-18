@@ -11,6 +11,7 @@ TIMEOUT = 15
 
 st.set_page_config(page_title="DBFW価格比較", layout="centered")
 
+
 # =========================
 # 共通
 # =========================
@@ -19,17 +20,20 @@ def fetch_text(url: str) -> str:
     r.raise_for_status()
     return BeautifulSoup(r.text, "html.parser").get_text("\n", strip=True)
 
+
 def normalize(text: str) -> str:
     text = text or ""
     text = text.replace("　", " ")
     text = re.sub(r"\s+", " ", text)
     return text.strip()
 
+
 def parse_price(text: str):
     m = re.search(r"([\d,]+)\s*円", text)
     if not m:
         return None
     return int(m.group(1).replace(",", ""))
+
 
 def result(site, available=None, price=None, url=None):
     if available is True and price is not None:
@@ -49,10 +53,11 @@ def result(site, available=None, price=None, url=None):
         "url": url,
     }
 
+
 # =========================
 # カードラッシュ（修正版）
 # =========================
-def get_cardrush(card_no: str, card_type: str):
+def get_cardrush(card_no):
     site = "カードラッシュ"
     url = f"https://www.cardrush-db.jp/product-list?keyword={quote(card_no)}"
 
@@ -70,7 +75,7 @@ def get_cardrush(card_no: str, card_type: str):
         prices = []
         for b in blocks:
             price = parse_price(b)
-            if price is not None:
+            if price:
                 prices.append(price)
 
         if prices:
@@ -80,6 +85,7 @@ def get_cardrush(card_no: str, card_type: str):
 
     except Exception:
         return result(site, None, None, url)
+
 
 # =========================
 # メルカード
@@ -101,6 +107,7 @@ def get_mercard(card_no):
     except:
         return result(site, None, None, url)
 
+
 # =========================
 # カードラボ
 # =========================
@@ -120,6 +127,7 @@ def get_clabo(card_no):
 
     except:
         return result(site, None, None, url)
+
 
 # =========================
 # メルカリ
@@ -141,12 +149,14 @@ def get_mercari(card_no):
     except:
         return result(site, None, None, url)
 
+
 # =========================
 # 採用価格
 # =========================
 def calc_adopted_price(results):
     prices = [r["price"] for r in results if r["available"] and r["price"]]
     return min(prices) if prices else None
+
 
 # =========================
 # UI
@@ -173,6 +183,7 @@ def main():
 
         for r in results:
             st.write(r)
+
 
 if __name__ == "__main__":
     main()
