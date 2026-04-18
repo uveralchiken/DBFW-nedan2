@@ -62,21 +62,29 @@ def get_cardrush(card_no):
     url = f"https://www.cardrush-db.jp/product-list?keyword={quote(card_no)}"
 
     try:
-        text = fetch_text(url)
+        res = requests.get(url, headers=HEADERS, timeout=TIMEOUT)
+        soup = BeautifulSoup(res.text, "html.parser")
 
-        # 在庫ありのみ取得
-        pattern = re.compile(
-            rf"([^\n]*{re.escape(card_no)}[^\n]*?([\d,]+円)[^\n]*在庫数\s*\d+\s*枚)",
-            re.IGNORECASE
-        )
-
-        blocks = [normalize(m.group(1)) for m in pattern.finditer(text)]
+        items = soup.select(".product-list__item")
 
         prices = []
-        for b in blocks:
-            price = parse_price(b)
-            if price:
-                prices.append(price)
+
+        for item in items:
+            text = item.get_text()
+
+            if card_no not in text:
+                continue
+
+            # 在庫なしは除外
+            if "在庫なし" in text or "×" in text:
+                continue
+
+            # 価格取得
+            price_tag = item.select_one(".price")
+            if price_tag:
+                price = parse_price(price_tag.text)
+                if price:
+                    prices.append(price)
 
         if prices:
             return result(site, True, min(prices), url)
@@ -85,8 +93,6 @@ def get_cardrush(card_no):
 
     except Exception:
         return result(site, None, None, url)
-
-
 # =========================
 # メルカード
 # =========================
