@@ -32,7 +32,15 @@ def extract_yen_prices(text: str) -> list[int]:
 
 
 def has_soldout_text(text: str) -> bool:
-    ng_words = ["在庫なし", "売り切れ", "SOLD OUT", "品切れ", "×", "残り在庫無し"]
+    ng_words = [
+        "在庫なし",
+        "売り切れ",
+        "SOLD OUT",
+        "品切れ",
+        "×",
+        "残り在庫無し",
+        "販売終了",
+    ]
     return any(word in text for word in ng_words)
 
 
@@ -102,19 +110,9 @@ def get_mercard(card_code: str, card_type: str) -> int | None:
             continue
         if card_type == "normal" and "パラレル" in text:
             continue
+        if any(x in text for x in ["SEC", "SCR", "シークレット", "サイン", "PSA", "鑑定"]):
+            continue
         if has_soldout_text(text):
-            continue
-
-        stock_match = re.search(r'残り\s*(\d+)\s*点', text)
-        if not stock_match:
-            continue
-
-        try:
-            stock = int(stock_match.group(1))
-        except Exception:
-            continue
-
-        if stock <= 0:
             continue
 
         href = a["href"]
@@ -123,8 +121,9 @@ def get_mercard(card_code: str, card_type: str) -> int | None:
         try:
             detail_html = fetch_html(full_url)
             soup2 = BeautifulSoup(detail_html, "html.parser")
+            detail_text = soup2.get_text(" ", strip=True)
 
-            if has_soldout_text(soup2.get_text(" ", strip=True)):
+            if has_soldout_text(detail_text):
                 continue
 
             tag = soup2.find("meta", {"property": "product:price:amount"})
@@ -132,6 +131,14 @@ def get_mercard(card_code: str, card_type: str) -> int | None:
                 price = int(tag["content"])
                 if 300 <= price <= 300000:
                     results.append(price)
+                    continue
+
+            prices = extract_yen_prices(detail_text)
+            if prices:
+                price = min(prices)
+                if 300 <= price <= 300000:
+                    results.append(price)
+
         except Exception:
             continue
 
@@ -153,6 +160,7 @@ def get_fullahead(card_code: str, card_type: str) -> int | None:
     for item in items:
         name = item.select_one(".itemName")
         price = item.select_one(".itemPrice strong")
+        link = item.find("a", href=True)
 
         if not name or not price:
             continue
@@ -171,21 +179,21 @@ def get_fullahead(card_code: str, card_type: str) -> int | None:
         if has_soldout_text(item_text):
             continue
 
-        stock_match = re.search(r'残りあと\s*(\d+)\s*個', item_text)
-        if not stock_match:
-            continue
-
-        try:
-            stock = int(stock_match.group(1))
-        except Exception:
-            continue
-
-        if stock <= 0:
-            continue
+        # 詳細ページも確認できる場合は売り切れ除外を強化
+        if link and link.get("href"):
+            detail_url = urljoin("https://www.fullahead-dbs.com", link["href"])
+            try:
+                detail_html = fetch_html(detail_url)
+                detail_text = BeautifulSoup(detail_html, "html.parser").get_text(" ", strip=True)
+                if has_soldout_text(detail_text):
+                    continue
+            except Exception:
+                pass
 
         try:
             p = int(price.get_text(strip=True).replace("円", "").replace(",", ""))
-            results.append(p)
+            if 300 <= p <= 300000:
+                results.append(p)
         except Exception:
             pass
 
