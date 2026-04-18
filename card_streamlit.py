@@ -45,12 +45,17 @@ def get_cardrush(card_code: str, card_type: str) -> int | None:
     for a in soup.find_all("a", href=True):
         text = a.get_text(" ", strip=True)
 
+        # カード番号一致
         if card_code not in text:
             continue
+
+        # 種類判定
         if card_type == "parallel" and "パラレル" not in text:
             continue
         if card_type == "normal" and "パラレル" in text:
             continue
+
+        # 除外系
         if any(x in text for x in ["SEC", "SCR", "シークレット", "サイン", "PSA", "鑑定"]):
             continue
 
@@ -59,52 +64,37 @@ def get_cardrush(card_code: str, card_type: str) -> int | None:
 
         try:
             detail_html = fetch_html(full_url)
-            prices = extract_yen_prices(detail_html)
-            if not prices:
+            soup2 = BeautifulSoup(detail_html, "html.parser")
+
+            valid_prices = []
+
+            # 👇 在庫ありの価格だけ拾う
+            for tag in soup2.find_all(string=True):
+                t = str(tag)
+
+                # 在庫なしを除外
+                if any(ng in t for ng in ["在庫なし", "売り切れ", "SOLD OUT", "×"]):
+                    continue
+
+                # 価格抽出
+                prices = extract_yen_prices(t)
+                valid_prices.extend(prices)
+
+            if not valid_prices:
                 continue
 
-            price = min(prices)
+            price = min(valid_prices)
+
+            # 異常値カット
             if price > 50000:
                 continue
 
             results.append(price)
+
         except Exception:
             continue
 
-    return min(results) if results else None
-
-
-def get_mercard(card_code: str, card_type: str) -> int | None:
-    url = f"https://www.mercarddb.jp/product-list?keyword={quote(card_code)}"
-    html = fetch_html(url)
-    soup = BeautifulSoup(html, "html.parser")
-
-    for a in soup.find_all("a", href=True):
-        text = a.get_text(" ", strip=True)
-
-        if card_code not in text:
-            continue
-        if card_type == "parallel" and "パラレル" not in text:
-            continue
-        if card_type == "normal" and "パラレル" in text:
-            continue
-
-        href = a["href"]
-        full_url = urljoin("https://www.mercarddb.jp", href)
-
-        try:
-            detail_html = fetch_html(full_url)
-            soup2 = BeautifulSoup(detail_html, "html.parser")
-            tag = soup2.find("meta", {"property": "product:price:amount"})
-            if tag and tag.get("content"):
-                return int(tag["content"])
-        except Exception:
-            continue
-
-    return None
-
-
-def get_fullahead(card_code: str, card_type: str) -> int | None:
+    return min(results) if results else Nonedef get_fullahead(card_code: str, card_type: str) -> int | None:
     url = f"https://www.fullahead-dbs.com/shop/shopbrand.html?search={quote(card_code)}"
     html = fetch_html(url)
     soup = BeautifulSoup(html, "html.parser")
