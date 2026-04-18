@@ -45,17 +45,12 @@ def get_cardrush(card_code: str, card_type: str) -> int | None:
     for a in soup.find_all("a", href=True):
         text = a.get_text(" ", strip=True)
 
-        # カード番号一致
         if card_code not in text:
             continue
-
-        # 種類判定
         if card_type == "parallel" and "パラレル" not in text:
             continue
         if card_type == "normal" and "パラレル" in text:
             continue
-
-        # 除外系
         if any(x in text for x in ["SEC", "SCR", "シークレット", "サイン", "PSA", "鑑定"]):
             continue
 
@@ -68,15 +63,12 @@ def get_cardrush(card_code: str, card_type: str) -> int | None:
 
             valid_prices = []
 
-            # 👇 在庫ありの価格だけ拾う
             for tag in soup2.find_all(string=True):
                 t = str(tag)
 
-                # 在庫なしを除外
                 if any(ng in t for ng in ["在庫なし", "売り切れ", "SOLD OUT", "×"]):
                     continue
 
-                # 価格抽出
                 prices = extract_yen_prices(t)
                 valid_prices.extend(prices)
 
@@ -85,7 +77,6 @@ def get_cardrush(card_code: str, card_type: str) -> int | None:
 
             price = min(valid_prices)
 
-            # 異常値カット
             if price > 50000:
                 continue
 
@@ -94,7 +85,40 @@ def get_cardrush(card_code: str, card_type: str) -> int | None:
         except Exception:
             continue
 
-    return min(results) if results else Nonedef get_fullahead(card_code: str, card_type: str) -> int | None:
+    return min(results) if results else None
+
+
+def get_mercard(card_code: str, card_type: str) -> int | None:
+    url = f"https://www.mercarddb.jp/product-list?keyword={quote(card_code)}"
+    html = fetch_html(url)
+    soup = BeautifulSoup(html, "html.parser")
+
+    for a in soup.find_all("a", href=True):
+        text = a.get_text(" ", strip=True)
+
+        if card_code not in text:
+            continue
+        if card_type == "parallel" and "パラレル" not in text:
+            continue
+        if card_type == "normal" and "パラレル" in text:
+            continue
+
+        href = a["href"]
+        full_url = urljoin("https://www.mercarddb.jp", href)
+
+        try:
+            detail_html = fetch_html(full_url)
+            soup2 = BeautifulSoup(detail_html, "html.parser")
+            tag = soup2.find("meta", {"property": "product:price:amount"})
+            if tag and tag.get("content"):
+                return int(tag["content"])
+        except Exception:
+            continue
+
+    return None
+
+
+def get_fullahead(card_code: str, card_type: str) -> int | None:
     url = f"https://www.fullahead-dbs.com/shop/shopbrand.html?search={quote(card_code)}"
     html = fetch_html(url)
     soup = BeautifulSoup(html, "html.parser")
@@ -148,8 +172,6 @@ def get_cardlabo(card_code: str, card_type: str) -> int | None:
 
     if prefix in cardlabo_category_map:
         target_urls = [cardlabo_category_map[prefix]]
-    elif prefix.startswith("FS") or prefix.startswith("FP") or prefix.startswith("SB"):
-        target_urls = [fw_root_url]
     else:
         target_urls = [fw_root_url]
 
@@ -174,12 +196,6 @@ def get_cardlabo(card_code: str, card_type: str) -> int | None:
                 continue
             if card_type == "normal" and has_star:
                 continue
-
-            if any(x in text for x in ["SCR", "SEC", "シークレット", "シリアル", "PSA", "鑑定"]):
-                if prefix.startswith("FB") and "★" not in text:
-                    pass
-                else:
-                    continue
 
             m = re.search(r'(\d[\d,]*)\s*円', text)
             if not m:
@@ -216,7 +232,7 @@ def get_mercari_lowest(card_code: str, card_type: str) -> int | None:
 
 
 # =========================
-# 画像（カードラッシュのみ）
+# 画像
 # =========================
 
 def get_card_image(card_code: str, card_type: str) -> str | None:
@@ -275,30 +291,11 @@ def search_card(card_code: str, card_type: str) -> dict:
         "採用価格": None,
     }
 
-    try:
-        result["カードラッシュ"] = get_cardrush(card_code, card_type)
-    except Exception:
-        pass
-
-    try:
-        result["メルカード"] = get_mercard(card_code, card_type)
-    except Exception:
-        pass
-
-    try:
-        result["フルアヘッド"] = get_fullahead(card_code, card_type)
-    except Exception:
-        pass
-
-    try:
-        result["カードラボ"] = get_cardlabo(card_code, card_type)
-    except Exception:
-        pass
-
-    try:
-        result["メルカリ最安値"] = get_mercari_lowest(card_code, card_type)
-    except Exception:
-        pass
+    result["カードラッシュ"] = get_cardrush(card_code, card_type)
+    result["メルカード"] = get_mercard(card_code, card_type)
+    result["フルアヘッド"] = get_fullahead(card_code, card_type)
+    result["カードラボ"] = get_cardlabo(card_code, card_type)
+    result["メルカリ最安値"] = get_mercari_lowest(card_code, card_type)
 
     result["採用価格"] = adopted_price(
         result["カードラッシュ"],
@@ -323,110 +320,18 @@ def format_price(value):
 
 st.set_page_config(page_title="DBFW価格検索", page_icon="💴", layout="centered")
 
-st.markdown("""
-<style>
-html, body, [class*="css"] {
-    font-family: "Yu Gothic UI", sans-serif;
-}
-.block-container {
-    padding-top: 2rem;
-    padding-bottom: 2rem;
-    max-width: 760px;
-}
-.big-title {
-    font-size: 48px;
-    font-weight: 800;
-    margin-bottom: 8px;
-    color: #1f2a44;
-}
-.sub-text {
-    color: #6b7280;
-    margin-bottom: 24px;
-}
-.price-card {
-    padding: 16px 18px;
-    border-radius: 16px;
-    background: #ffffff;
-    border: 1px solid #e5e7eb;
-    margin-bottom: 12px;
-    box-shadow: 0 2px 8px rgba(0,0,0,0.04);
-}
-.shop-name {
-    font-size: 18px;
-    font-weight: 700;
-    color: #1f2937;
-}
-.shop-price {
-    font-size: 28px;
-    font-weight: 800;
-    color: #f06418;
-    text-align: right;
-}
-.final-wrap {
-    margin-top: 18px;
-    padding: 18px;
-    border-radius: 18px;
-    background: #fff5f2;
-    border: 2px solid #f28c52;
-    text-align: center;
-}
-.final-label {
-    font-size: 18px;
-    color: #8b3d16;
-    font-weight: 700;
-}
-.final-price {
-    font-size: 42px;
-    color: #e85d0c;
-    font-weight: 900;
-    margin-top: 8px;
-}
-</style>
-""", unsafe_allow_html=True)
-
-st.markdown('<div class="big-title">DBFW 価格検索</div>', unsafe_allow_html=True)
-st.markdown('<div class="sub-text">カード番号を入れて相場を確認</div>', unsafe_allow_html=True)
+st.title("DBFW 価格検索")
 
 card_code = st.text_input("カード番号", value="FB09-005").strip().upper()
 ui_type = st.selectbox("種類", ["パラレル", "ノーマル"], index=0)
 card_type = "parallel" if ui_type == "パラレル" else "normal"
 
-if st.button("検索", use_container_width=True):
-    if not card_code:
-        st.warning("カード番号を入力してください")
-    else:
-        with st.spinner("検索中..."):
-            result = search_card(card_code, card_type)
-            img_url = get_card_image(card_code, card_type)
+if st.button("検索"):
+    result = search_card(card_code, card_type)
+    img_url = get_card_image(card_code, card_type)
 
-        st.markdown("## 検索結果")
+    if img_url:
+        st.image(img_url)
 
-        if img_url:
-            col1, col2, col3 = st.columns([1, 2, 1])
-            with col2:
-                st.image(img_url, use_container_width=True)
-
-        for shop_name in ["カードラッシュ", "メルカード", "フルアヘッド", "カードラボ", "メルカリ最安値"]:
-            price_text = format_price(result[shop_name])
-
-            st.markdown(
-                f"""
-                <div class="price-card">
-                    <div style="display:flex; justify-content:space-between; align-items:center;">
-                        <div class="shop-name">{shop_name}</div>
-                        <div class="shop-price">{price_text}</div>
-                    </div>
-                </div>
-                """,
-                unsafe_allow_html=True
-            )
-
-        st.markdown(
-            f"""
-            <div class="final-wrap">
-                <div class="final-label">採用価格</div>
-                <div class="final-price">{format_price(result["採用価格"])}</div>
-            </div>
-            """,
-            unsafe_allow_html=True
-        )
+    for k, v in result.items():
+        st.write(k, format_price(v))
