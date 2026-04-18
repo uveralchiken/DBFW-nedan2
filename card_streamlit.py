@@ -52,26 +52,18 @@ def get_cardrush(card_code: str, card_type: str) -> int | None:
         if not text:
             continue
 
-        # カード番号一致
         if card_code not in text:
             continue
-
-        # 種類判定
         if card_type == "parallel" and "パラレル" not in text:
             continue
         if card_type == "normal" and "パラレル" in text:
             continue
-
-        # 除外系
         if any(x in text for x in ["SEC", "SCR", "シークレット", "サイン", "PSA", "鑑定"]):
             continue
 
-        # 在庫なし系を除外
         if any(x in text for x in ["在庫なし", "売り切れ", "SOLD OUT"]):
             continue
 
-        # 「×」が入っているものは除外
-        # ただし card_code 自体や別記号に巻き込まれないよう、価格が取れるものだけ見る
         prices = extract_yen_prices(text)
         if not prices:
             continue
@@ -135,6 +127,8 @@ def get_fullahead(card_code: str, card_type: str) -> int | None:
             continue
 
         text = name.get_text(" ", strip=True)
+        item_text = item.get_text(" ", strip=True)
+
         if card_code not in text:
             continue
 
@@ -142,6 +136,23 @@ def get_fullahead(card_code: str, card_type: str) -> int | None:
         if card_type == "parallel" and not is_parallel:
             continue
         if card_type == "normal" and is_parallel:
+            continue
+
+        # 在庫なし系は除外
+        if any(x in item_text for x in ["在庫なし", "売り切れ", "SOLD OUT", "×"]):
+            continue
+
+        # フルアヘッドは「残りあと◯個」が出るものだけ採用
+        stock_match = re.search(r'残りあと\s*(\d+)\s*個', item_text)
+        if not stock_match:
+            continue
+
+        try:
+            stock = int(stock_match.group(1))
+        except Exception:
+            continue
+
+        if stock <= 0:
             continue
 
         try:
