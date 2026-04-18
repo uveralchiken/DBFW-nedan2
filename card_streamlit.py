@@ -31,6 +31,11 @@ def extract_yen_prices(text: str) -> list[int]:
     return sorted(set(prices))
 
 
+def has_soldout_text(text: str) -> bool:
+    ng_words = ["在庫なし", "売り切れ", "SOLD OUT", "品切れ", "×"]
+    return any(word in text for word in ng_words)
+
+
 # =========================
 # 各店舗
 # =========================
@@ -138,11 +143,9 @@ def get_fullahead(card_code: str, card_type: str) -> int | None:
         if card_type == "normal" and is_parallel:
             continue
 
-        # 在庫なし系は除外
         if any(x in item_text for x in ["在庫なし", "売り切れ", "SOLD OUT", "×"]):
             continue
 
-        # フルアヘッドは「残りあと◯個」が出るものだけ採用
         stock_match = re.search(r'残りあと\s*(\d+)\s*個', item_text)
         if not stock_match:
             continue
@@ -215,6 +218,24 @@ def get_cardlabo(card_code: str, card_type: str) -> int | None:
                 if prefix.startswith("FB") and "★" not in text:
                     pass
                 else:
+                    continue
+
+            if has_soldout_text(text):
+                continue
+
+            detail_url = None
+            a_tag = li.find("a", href=True)
+            if a_tag and a_tag.get("href"):
+                detail_url = urljoin("https://www.c-labo-online.jp", a_tag["href"])
+
+            if detail_url:
+                try:
+                    detail_html = fetch_html(detail_url)
+                    detail_text = BeautifulSoup(detail_html, "html.parser").get_text(" ", strip=True)
+
+                    if has_soldout_text(detail_text):
+                        continue
+                except Exception:
                     continue
 
             m = re.search(r'(\d[\d,]*)\s*円', text)
