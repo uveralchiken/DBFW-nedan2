@@ -54,36 +54,24 @@ def get_cardrush(card_code: str, card_type: str) -> int | None:
         if any(x in text for x in ["SEC", "SCR", "シークレット", "サイン", "PSA", "鑑定"]):
             continue
 
-        href = a["href"]
-        full_url = urljoin("https://www.cardrush-db.jp", href)
-
-        try:
-            detail_html = fetch_html(full_url)
-            soup2 = BeautifulSoup(detail_html, "html.parser")
-
-            valid_prices = []
-
-            for tag in soup2.find_all(string=True):
-                t = str(tag)
-
-                if any(ng in t for ng in ["在庫なし", "売り切れ", "SOLD OUT", "×"]):
-                    continue
-
-                prices = extract_yen_prices(t)
-                valid_prices.extend(prices)
-
-            if not valid_prices:
-                continue
-
-            price = min(valid_prices)
-
-            if price > 50000:
-                continue
-
-            results.append(price)
-
-        except Exception:
+        # 在庫なし除外（ここが今回の修正）
+        if any(x in text for x in ["×", "在庫なし", "売り切れ", "SOLD OUT"]):
             continue
+
+        # 在庫ありだけに絞る
+        if "在庫数" not in text:
+            continue
+
+        prices = extract_yen_prices(text)
+        if not prices:
+            continue
+
+        price = min(prices)
+
+        if price > 50000:
+            continue
+
+        results.append(price)
 
     return min(results) if results else None
 
@@ -278,43 +266,6 @@ def adopted_price(cardrush, mercard, fullahead, cardlabo, mercari):
 
 
 # =========================
-# 価格取得まとめ
-# =========================
-
-def search_card(card_code: str, card_type: str) -> dict:
-    result = {
-        "カードラッシュ": None,
-        "メルカード": None,
-        "フルアヘッド": None,
-        "カードラボ": None,
-        "メルカリ最安値": None,
-        "採用価格": None,
-    }
-
-    result["カードラッシュ"] = get_cardrush(card_code, card_type)
-    result["メルカード"] = get_mercard(card_code, card_type)
-    result["フルアヘッド"] = get_fullahead(card_code, card_type)
-    result["カードラボ"] = get_cardlabo(card_code, card_type)
-    result["メルカリ最安値"] = get_mercari_lowest(card_code, card_type)
-
-    result["採用価格"] = adopted_price(
-        result["カードラッシュ"],
-        result["メルカード"],
-        result["フルアヘッド"],
-        result["カードラボ"],
-        result["メルカリ最安値"],
-    )
-
-    return result
-
-
-def format_price(value):
-    if value is None:
-        return "なし"
-    return f"{value:,}円"
-
-
-# =========================
 # UI
 # =========================
 
@@ -327,11 +278,24 @@ ui_type = st.selectbox("種類", ["パラレル", "ノーマル"], index=0)
 card_type = "parallel" if ui_type == "パラレル" else "normal"
 
 if st.button("検索"):
-    result = search_card(card_code, card_type)
+    result = {
+        "カードラッシュ": get_cardrush(card_code, card_type),
+        "メルカード": get_mercard(card_code, card_type),
+        "フルアヘッド": get_fullahead(card_code, card_type),
+        "カードラボ": get_cardlabo(card_code, card_type),
+        "メルカリ最安値": get_mercari_lowest(card_code, card_type),
+    }
+
+    prices = [v for v in result.values() if v is not None]
+    final_price = min(prices) if prices else None
+
     img_url = get_card_image(card_code, card_type)
 
     if img_url:
         st.image(img_url)
 
     for k, v in result.items():
-        st.write(k, format_price(v))
+        st.write(k, f"{v:,}円" if v else "なし")
+
+    st.markdown("---")
+    st.write("最安価格", f"{final_price:,}円" if final_price else "なし")
