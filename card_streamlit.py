@@ -173,6 +173,7 @@ def get_fullahead(card_code: str, card_type: str) -> int | None:
     for item in items:
         name = item.select_one(".itemName")
         price = item.select_one(".itemPrice strong")
+        link = item.find("a", href=True)
 
         if not name or not price:
             continue
@@ -189,8 +190,45 @@ def get_fullahead(card_code: str, card_type: str) -> int | None:
         if card_type == "normal" and is_parallel:
             continue
 
-        # 一覧に明確な売り切れ表記があるものだけ除外
         if has_soldout_text(item_text):
+            continue
+
+        in_stock = False
+
+        # 一覧で在庫数が出ていれば採用
+        stock_match = re.search(r'残りあと\s*(\d+)\s*個', item_text)
+        if stock_match:
+            try:
+                if int(stock_match.group(1)) > 0:
+                    in_stock = True
+            except Exception:
+                pass
+
+        # 一覧で判定できない場合は詳細で確認
+        if not in_stock and link and link.get("href"):
+            detail_url = urljoin("https://www.fullahead-dbs.com", link["href"])
+            try:
+                detail_html = fetch_html(detail_url)
+                detail_text = BeautifulSoup(detail_html, "html.parser").get_text(" ", strip=True)
+
+                if has_soldout_text(detail_text):
+                    continue
+
+                if "カートに入れる" in detail_text:
+                    in_stock = True
+
+                detail_stock_match = re.search(r'残りあと\s*(\d+)\s*個', detail_text)
+                if detail_stock_match:
+                    try:
+                        if int(detail_stock_match.group(1)) > 0:
+                            in_stock = True
+                    except Exception:
+                        pass
+
+            except Exception:
+                continue
+
+        if not in_stock:
             continue
 
         try:
