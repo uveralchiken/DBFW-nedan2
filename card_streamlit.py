@@ -127,11 +127,9 @@ def get_mercard(card_code: str, card_type: str) -> int | None:
             soup2 = BeautifulSoup(detail_html, "html.parser")
             detail_text = soup2.get_text(" ", strip=True)
 
-            # 売り切れ確定だけ除外
             if "残り在庫無し" in detail_text:
                 continue
 
-            # 在庫あり判定
             in_stock = False
             if re.search(r'残り\s*\d+\s*点', detail_text):
                 in_stock = True
@@ -141,7 +139,6 @@ def get_mercard(card_code: str, card_type: str) -> int | None:
             if not in_stock:
                 continue
 
-            # 価格取得
             tag = soup2.find("meta", {"property": "product:price:amount"})
             if tag and tag.get("content"):
                 price = int(tag["content"])
@@ -176,7 +173,6 @@ def get_fullahead(card_code: str, card_type: str) -> int | None:
     for item in items:
         name = item.select_one(".itemName")
         price = item.select_one(".itemPrice strong")
-        link = item.find("a", href=True)
 
         if not name or not price:
             continue
@@ -192,18 +188,10 @@ def get_fullahead(card_code: str, card_type: str) -> int | None:
             continue
         if card_type == "normal" and is_parallel:
             continue
+
+        # 一覧に明確な売り切れ表記があるものだけ除外
         if has_soldout_text(item_text):
             continue
-
-        if link and link.get("href"):
-            detail_url = urljoin("https://www.fullahead-dbs.com", link["href"])
-            try:
-                detail_html = fetch_html(detail_url)
-                detail_text = BeautifulSoup(detail_html, "html.parser").get_text(" ", strip=True)
-                if has_soldout_text(detail_text):
-                    continue
-            except Exception:
-                pass
 
         try:
             p = int(price.get_text(strip=True).replace("円", "").replace(",", ""))
