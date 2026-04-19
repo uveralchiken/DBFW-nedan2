@@ -113,10 +113,13 @@ def get_mercard(card_code: str, card_type: str) -> int | None:
             continue
         if any(x in text for x in ["SEC", "SCR", "シークレット", "サイン", "PSA", "鑑定"]):
             continue
-        if has_soldout_text(text):
+        if "残り在庫無し" in text:
             continue
 
-        href = a["href"]
+        href = a.get("href")
+        if not href:
+            continue
+
         full_url = urljoin("https://www.mercarddb.jp", href)
 
         try:
@@ -124,9 +127,21 @@ def get_mercard(card_code: str, card_type: str) -> int | None:
             soup2 = BeautifulSoup(detail_html, "html.parser")
             detail_text = soup2.get_text(" ", strip=True)
 
-            if has_soldout_text(detail_text):
+            # 売り切れ確定だけ除外
+            if "残り在庫無し" in detail_text:
                 continue
 
+            # 在庫あり判定
+            in_stock = False
+            if re.search(r'残り\s*\d+\s*点', detail_text):
+                in_stock = True
+            if "カートに入れる" in detail_text:
+                in_stock = True
+
+            if not in_stock:
+                continue
+
+            # 価格取得
             tag = soup2.find("meta", {"property": "product:price:amount"})
             if tag and tag.get("content"):
                 price = int(tag["content"])
