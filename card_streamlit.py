@@ -71,8 +71,11 @@ def get_cardrush(card_code: str, card_type: str) -> int | None:
             continue
         if card_type == "normal" and "パラレル" in text:
             continue
-        if any(x in text for x in ["SEC", "SCR", "シークレット", "サイン", "PSA", "鑑定"]):
+
+        # SCR / SEC / シークレットは除外しない
+        if any(x in text for x in ["PSA", "鑑定", "サイン"]):
             continue
+
         if has_soldout_text(text):
             continue
 
@@ -111,8 +114,11 @@ def get_mercard(card_code: str, card_type: str) -> int | None:
             continue
         if card_type == "normal" and "パラレル" in text:
             continue
-        if any(x in text for x in ["SEC", "SCR", "シークレット", "サイン", "PSA", "鑑定"]):
+
+        # SCR / SEC / シークレットは除外しない
+        if any(x in text for x in ["PSA", "鑑定", "サイン"]):
             continue
+
         if "残り在庫無し" in text:
             continue
 
@@ -173,7 +179,6 @@ def get_fullahead(card_code: str, card_type: str) -> int | None:
     for item in items:
         name = item.select_one(".itemName")
         price = item.select_one(".itemPrice strong")
-        link = item.find("a", href=True)
 
         if not name or not price:
             continue
@@ -195,7 +200,6 @@ def get_fullahead(card_code: str, card_type: str) -> int | None:
 
         in_stock = False
 
-        # 一覧で在庫数が出ていれば採用
         stock_match = re.search(r'残りあと\s*(\d+)\s*個', item_text)
         if stock_match:
             try:
@@ -204,7 +208,7 @@ def get_fullahead(card_code: str, card_type: str) -> int | None:
             except Exception:
                 pass
 
-        # 一覧で判定できない場合は詳細で確認
+        link = item.find("a", href=True)
         if not in_stock and link and link.get("href"):
             detail_url = urljoin("https://www.fullahead-dbs.com", link["href"])
             try:
@@ -288,11 +292,9 @@ def get_cardlabo(card_code: str, card_type: str) -> int | None:
             if card_type == "normal" and has_star:
                 continue
 
-            if any(x in text for x in ["SCR", "SEC", "シークレット", "シリアル", "PSA", "鑑定"]):
-                if prefix.startswith("FB") and "★" not in text:
-                    pass
-                else:
-                    continue
+            # SCR / SEC / シークレットは除外しない
+            if any(x in text for x in ["PSA", "鑑定", "シリアル"]):
+                continue
 
             if has_soldout_text(text):
                 continue
